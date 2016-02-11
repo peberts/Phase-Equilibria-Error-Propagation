@@ -1,0 +1,126 @@
+% Calculates Error in the Diffusion Coefficient 
+% Import Data - 18-1
+clc
+clear all
+load('n6'); n = n6;
+load('t6'); t = t6;
+
+% Find K matrix and Slopes
+A = [ones(length(n), 1), t, t.^2];
+b = n;
+k = inv(A'*A)*A';
+x = k*b;
+
+% Calculate Residual and find variance
+r = b - A*x;
+CovMat = r'*r/(length(n)-3);
+varM = k(2,:)*CovMat*k(2,:)';
+
+% Parameters
+Vp = 194.766;
+Tc = 291.15;
+L1 = 9.75;
+L2 = 7.5;
+D = .125;
+Dc = 50.4;
+Pt = 1.013;
+Tp = 293.15;
+Vstir = 1.1;
+Msolv = 40.13;
+
+m = x(2);
+
+z = [Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv, Dc, m]';
+
+% Construct anonymous functions for various calculations
+Vd = @(L1, L2, D) (L1+L2)*pi*D^2/4*2.54^3;
+rho_solv = @(Tc) .8022 + .00104*(Tc - 20-273.15);
+nsolv = @(Msolv) Msolv/136;
+Vsolv = @(Msolv, Tc) Msolv/rho_solv(Tc);
+Vcg = @(Msolv, Tc, Vstir) 150 - Vsolv(Msolv,Tc) - Vstir;
+Acell = @(Dc) pi*(Dc*10^-1)^2/4;
+Bp = @(Tp) -1636.75+12.0408*Tp-(3.27957/100)*Tp^2+3.16528*10^-5*Tp^3;
+Bc = @(Tc) -1636.75+12.0408*Tc-(3.27957/100)*Tc^2+3.16528*10^-5*Tc^3;
+Zp = @(Pt, Tp) 1 + Bp(Tp)*Pt/83.1447/Tp;
+Zc = @(Pt, Tc) 1 + Bp(Tc)*Pt/83.1447/Tc;
+P1_sat = @(Tc) (.0014 + (.0016-.0016)/10*(9/5) * (Tc-15.556-273.15))*1.013; %<<<<<<<<<< Change at diff Temps
+n = @(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv) Pt*(Vp-Vd(L1,L2,D))/(83.1447*Zp(Pt,Tp)*Tp) - Vcg(Msolv, Tc, Vstir)*(Pt-P1_sat(Tc))/(83.1447*Zc(Pt,Tc)*Tc);
+Ci = @(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv) n(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv)/Vsolv(Msolv,Tc);
+Ci(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv);
+
+%% Diffusion Coefficient Calculation
+Dcoeff = @(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv, Dc, m) (m/(2*Acell(Dc)*Ci(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv)))^2 * pi;
+Dcoeff2 = @(z) (z(11)/(2*Acell(z(10))*Ci(z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), z(9))))^2 * pi;
+Dcoeff2(z);
+
+% Construct Covariance Matrix
+sig = [.20; % sigVp
+       .05; % sigTc
+       .05; % sigL1
+       .05; % sigL2
+       .005; % sigD
+       .005/760; % sigPt
+       .05; % sigTp
+       .05; % sigVstir
+       .005; % sigMsolv
+       .05; % sigDc
+       varM^.5]; % sigM
+
+% Solve for the gradient matrix
+dx = ones(length(z),1);
+for i = 1:11
+    dx = dx*0;
+    dx(i) = dx(i) + sig(i)/10;
+    gradF(i) = (Dcoeff2(z+dx) - Dcoeff2(z))/dx(i);
+end
+
+% Calculate Variance in Dcoeff
+E = diag(sig.^2);
+varD = gradF*E*gradF'
+sigD = varD^.5
+
+
+
+%% Henry's Constant
+Zh = [Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv]';
+f1_pure = @(Pt,Tc) Pt*exp(Bc(Tc)*Pt/83.1447/Tc);
+y = @(Pt, Tc) (Pt-P1_sat(Tc))/Pt;
+f = @(Pt, Tc) f1_pure(Pt, Tc) * y(Pt, Tc);
+X = @(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv) n(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv)/(n(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv)+nsolv(Msolv));
+H = @(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv) f(Pt, Tc)/X(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv);
+
+H2 = @(z) f(z(6), z(2))/X(z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), z(9));
+H2(Zh)
+sigZh = sig(1:9,:);
+% Solve for the gradient matrix
+dx2 = ones(length(Zh),1);
+for i = 1:9
+    dx2 = dx2*0;
+    dx2(i) = dx2(i) + sigZh(i)/10;
+    gradH(i) = (H2(Zh+dx2) - H2(Zh))/dx2(i);
+end
+
+% Calculate Variance in Henry's Constant
+Eh = diag(sigZh.^2);
+varH = gradH*Eh*gradH'
+sigH = varH^.5
+
+%% Solubility Constant
+Zx = [Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv]';
+
+X = @(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv) n(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv)/(n(Vp, Tc, L1, L2, D, Pt, Tp, Vstir, Msolv)+nsolv(Msolv));
+X2 = @(z) n(z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), z(9))/(n(z(1), z(2), z(3), z(4), z(5), z(6), z(7), z(8), z(9))+nsolv(z(9)));
+X2(Zx)
+sigZx = sig(1:9,:);
+% Solve for the gradient matrix
+dx3 = ones(length(Zx),1);
+for i = 1:9
+    dx3 = dx3*0;
+    dx3(i) = dx3(i) + sigZx(i)/10;
+    gradX(i) = (X2(Zx+dx3) - X2(Zx))/dx3(i);
+end
+
+% Calculate Variance in SolubilityEh = diag(sigZh.^2);
+Ex = diag(sigZx.^2);
+varX = gradX*Ex*gradX'
+sigX = varX^.5
