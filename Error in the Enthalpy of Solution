@@ -1,0 +1,44 @@
+% Error in Enthalpy of Solution Calculation
+clear all
+clc
+
+% Load Data
+load('H')
+load('sigH')
+T1 = 291.15;
+T2 = 297.15;
+T3 = 303.15;
+T = [T1; T1; T2; T2; T3; T3; T3];
+R = 8.314* 10^-3;
+sigT = .05;
+
+% Initialize gradient and covariance matrix
+gradF = [-R.*T./H, -R*log(H)];
+
+for i = 1:length(H)
+    
+      E = diag([sigH(i)^2, sigT^2]);
+      varF(i) = gradF(i,:)*E*gradF(i,:)';    
+      sigF(i) = varF(i)^.5;
+    % (   (R*T(1)/H(1))^2 * sigH(1)^2 + (R*log(H(1)))^2*sigT^2   )^.5
+end
+
+
+H = -R*T.*log(H);
+
+varF_bar = [(varF(1) + varF(2))/4
+
+
+
+
+
+% % Linear Regression to find k matrix
+% T = [1/T1; 1/T1; 1/T2; 1/T2; 1/T3; 1/T3; 1/T3];
+% A = [ones(length(H),1),T];
+% b = log(H);
+% k = inv(A'*A)*A';
+% x = k*b;
+% 
+% % Find error in enthalp of solution
+% varEOS = (k(2,:)*diag(siglnh.^2)*k(2,:)');
+% sigEOS = varEOS^.5
